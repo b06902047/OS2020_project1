@@ -121,6 +121,8 @@ int RR(struct process* processes, int num_of_proc){
 	int running=-1;
 	int round_time=0;
 	int next=0;
+	int queue[30];
+	int que_start=0,que_end=0;//que_start=que_end => empty; que_start=que_end+1=>full
 	while(1){
 		for(int i=0;i<num_of_proc;i++){//create new process
 			if(processes[i].ready_time==time_units_now){
@@ -135,40 +137,42 @@ int RR(struct process* processes, int num_of_proc){
 						
 				}			//prevent child process from getting parent's cpu 
 				specify_cpu(pid, 1);
+				block_proc(pid);
 				processes[i].pid=pid;
-				
+				queue[que_end]=i;
+				que_end=(que_end+1)%30;
 			}
 		}
-		if(running!=-1)
-			next=(running+1)%num_of_proc;
-		if(running!=-1&&processes[running].exec_time==0){		//someone is ending its work
-			
+		if(running!=-1&&processes[running].exec_time==0){		//someone is ending its work	
 			waitpid(processes[running].pid, NULL, 0);			//wait for child process to return 
 			printf("%s %d\n", processes[running].name, processes[running].pid);
 			processes[running].pid=-1;
 			running=-1;
 			remain_proc--;
+			que_start=(que_start+1)%30;
 			if(remain_proc==0)
 				exit(0);
 		}
 		else if(running!=-1 && round_time==0){
 			block_proc(processes[running].pid);
+			que_start=(que_start+1)%30;
+			queue[que_end]=running;
+			que_end=(que_end+1)%30;
 			running=-1;
 		}
-		if(running==-1){		//no one is working, then assign ready process to cpu
-			for(int i=0;i<num_of_proc;i++)
-				if(processes[(next+i)%num_of_proc].pid!=-1){
-					wake_proc(processes[(next+i)%num_of_proc].pid);
+		//printf("%d %d %d\n",running,que_start,que_end);
+		if(running==-1&&que_start!=que_end){		//no one is working, then assign ready process to cpu
+					wake_proc(processes[queue[que_start]].pid);
 					round_time=0;
 					//printf("%d  %d\n",(next+i)%num_of_proc,time_units_now);
-					specify_cpu(processes[(next+i)%num_of_proc].pid, 1);
-					running=(next+i)%num_of_proc;
-					break;
-				}
+					specify_cpu(processes[queue[que_start]].pid, 1);
+					running=queue[que_start];
 		}
-		time_unit();
-		if(running!=-1)
+		if(running!=-1){
+			wake_proc(processes[running].pid);
 			processes[running].exec_time--;
+		}
+		time_unit();	
 		time_units_now++;
 		round_time=(round_time+1)%500;
 	}
